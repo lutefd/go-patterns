@@ -2,105 +2,77 @@ package main
 
 import (
 	"fmt"
-	"sync"
+	"math/rand"
+	"time"
 )
 
-// import (
-// 	"fmt"
-// 	"math/rand"
-// 	"time"
-// )
+func repeatFunc[T any, K any](done <-chan K, fn func() T) <-chan T {
+	stream := make(chan T)
+	go func() {
+		defer close(stream)
+		for {
+			select {
+			case <-done:
+				return
+			case stream <- fn():
 
-// func repeatFunc[T any, K any](done <-chan K, fn func() T) <-chan T {
-// 	stream := make(chan T)
-// 	go func() {
-// 		defer close(stream)
-// 		for {
-// 			select {
-// 			case <-done:
-// 				return
-// 			case stream <- fn():
+			}
+		}
+	}()
+	return stream
+}
 
-// 			}
-// 		}
-// 	}()
-// 	return stream
-// }
+func take[T any, K any](done <-chan K, stream <-chan T, n int) <-chan T {
+	taken := make(chan T)
+	go func() {
+		defer close(taken)
+		for i := 0; i < n; i++ {
+			select {
+			case <-done:
+				return
+			case taken <- <-stream:
+			}
+		}
+	}()
+	return taken
+}
 
-// func take[T any, K any](done <-chan K, stream <-chan T, n int) <-chan T {
-// 	taken := make(chan T)
-// 	go func() {
-// 		defer close(taken)
-// 		for i := 0; i < n; i++ {
-// 			select {
-// 			case <-done:
-// 				return
-// 			case taken <- <-stream:
-// 			}
-// 		}
-// 	}()
-// 	return taken
-// }
-
-// func primeFinder(done <-chan int, randIntStream <-chan int) <-chan int {
-// 	isPrime := func(randomInt int) bool {
-// 		for i := randomInt - 1; i > 1; i-- {
-// 			if randomInt%i == 0 {
-// 				return false
-// 			}
-// 		}
-// 		return true
-// 	}
-// 	primes := make(chan int)
-// 	go func() {
-// 		defer close(primes)
-// 		for {
-// 			select {
-// 			case <-done:
-// 				return
-// 			case randomInt := <-randIntStream:
-// 				if isPrime(randomInt) {
-// 					primes <- randomInt
-// 				}
-// 			}
-// 		}
-// 	}()
-// 	return primes
-// }
-
-// func main() {
-// 	start := time.Now()
-// 	done := make(chan int)
-// 	defer close(done)
-
-//		randNumFetcher := func() int { return rand.Intn(50000000) }
-//		randIntStream := repeatFunc(done, randNumFetcher)
-//		primeStream := primeFinder(done, randIntStream)
-//		for rando := range take(done, primeStream, 10) {
-//			fmt.Println(rando)
-//		}
-//		fmt.Println(time.Since(start))
-//	}
-var mu sync.Mutex
-var chain string
+func primeFinder(done <-chan int, randIntStream <-chan int) <-chan int {
+	isPrime := func(randomInt int) bool {
+		for i := randomInt - 1; i > 1; i-- {
+			if randomInt%i == 0 {
+				return false
+			}
+		}
+		return true
+	}
+	primes := make(chan int)
+	go func() {
+		defer close(primes)
+		for {
+			select {
+			case <-done:
+				return
+			case randomInt := <-randIntStream:
+				if isPrime(randomInt) {
+					primes <- randomInt
+				}
+			}
+		}
+	}()
+	return primes
+}
 
 func main() {
-	chain = "main"
-	A()
-	fmt.Println(chain)
-}
-func A() {
-	mu.Lock()
-	defer mu.Unlock()
-	chain = chain + " --> A"
-	B()
-}
-func B() {
-	chain = chain + " --> B"
-	C()
-}
-func C() {
-	mu.Lock()
-	defer mu.Unlock()
-	chain = chain + " --> C"
+	start := time.Now()
+	done := make(chan int)
+	defer close(done)
+
+	randNumFetcher := func() int { return rand.Intn(50000000) }
+	randIntStream := repeatFunc(done, randNumFetcher)
+	primeStream := primeFinder(done, randIntStream)
+	for rando := range take(done, primeStream, 10) {
+		fmt.Println(rando)
+	}
+	fmt.Println(time.Since(start))
 }
